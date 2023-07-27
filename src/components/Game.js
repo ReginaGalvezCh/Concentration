@@ -111,10 +111,11 @@ function Game() {
     }, [game.flippedCards]);
 
     useEffect(() => {
-        if (game.matchedCards.length === game.cards.length) {
+        if (game.matches === game.cards.length / 2) {
             setGame(prevGame => ({ ...prevGame, gameWon: true }));
         }
-    }, [game.matchedCards, game.cards]);
+    }, [game.matches, game.cards]);
+    
 
     if (isLoading) {
         return <div>Loading...</div>;
