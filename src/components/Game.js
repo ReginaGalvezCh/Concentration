@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import './Game.css';
+import Modal from 'react-bootstrap/Modal';
+import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
+import useWindowSize from './useWindowSize';
+import useFetchData from './useFetchData';
+import useGameLogic from './useGameLogic';
 
 function Game() {
+    function calculateCardAmount(windowSize) {
+        if (windowSize < 600 ) return 6;
+        if (windowSize < 900 ) return 12;
+        return 18; 
+   }
+   const windowSize = useWindowSize();
+    const cardAmount = calculateCardAmount(windowSize);
+
     const [game, setGame] = useState({
         userName: "",
         cards: [],
@@ -8,117 +23,52 @@ function Game() {
         matchedCards: [],
         mistakes: 0,
         matches: 0,
-        gameWon: false
+        gameWon: false,
+        showModal: !localStorage.getItem('userName'),
+        tempUserName: ""
     });
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
 
+    const { isLoading, error } = useFetchData(cardAmount, setGame);
+    useGameLogic(game, setGame);
 
-    useEffect(() => {
-        // Check if there is a username in local storage
-        const storedUserName = localStorage.getItem('userName');
-        if (storedUserName) {
-            // If there is, use it
-            setGame(prevGame => ({ ...prevGame, userName: storedUserName }));
-        } else {
-            // If there isn't, ask the user for their name
-            const userName = prompt('Please enter your name');
-            setGame(prevGame => ({ ...prevGame, userName }));
-            // And store it in local storage for future use
-            localStorage.setItem('userName', userName);
-        }
+    const [newUserName, setNewUserName] = useState("");
+    const [isUserConfirmed, setIsUserConfirmed] = useState(false);
 
-        // Fetch data from the API...
-    }, []);
+    const confirmUser = (event) => {
+        event.preventDefault(); 
+        localStorage.setItem('userName', newUserName);
+        setGame(prevGame => ({ ...prevGame, userName: newUserName }));
+        setIsUserConfirmed(true);
+    };
 
-    // Whenever the userName changes, update it in local storage
-    useEffect(() => {
-        localStorage.setItem('userName', game.userName);
-    }, [game.userName]);
+    const handleNameChange = (event) => {
+        setNewUserName(event.target.value);
+    };
 
-    useEffect(() => {
-        setIsLoading(true);
-        fetch('https://fed-team.modyo.cloud/api/content/spaces/animals/types/game/entries?per_page=20')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Something went wrong while fetching the data!');
-                }
-                return response.json();
-            })
-            .then(data => {
-                const cards = data.map(item => ({
-                    id: item.id,
-                    img: item.img,
-                    isFlipped: false,
-                    isMatched: false
-                }));
-                const gameCards = [...cards, ...cards].sort(() => Math.random() - 0.5);
-                setGame(prevGame => ({ ...prevGame, cards: gameCards }));
-                setIsLoading(false);
-            })
-            .catch(error => {
-                setIsLoading(false);
-                setError(error.message);
-            });
-    }, []);
     const handleCardClick = (id) => {
         const clickedCardIndex = game.cards.findIndex(card => card.id === id);
-    const clickedCard = game.cards[clickedCardIndex];
+        const clickedCard = game.cards[clickedCardIndex];
 
-    if (clickedCard.isFlipped || clickedCard.isMatched) {
-        // The card is already flipped or matched, so don't do anything
-        return;
-    }
+        if (clickedCard.isFlipped || clickedCard.isMatched) {
+            return;
+        }
 
-    const newCards = [...game.cards];
-    newCards[clickedCardIndex] = { ...newCards[clickedCardIndex], isFlipped: true };
+        const newCards = [...game.cards];
+        newCards[clickedCardIndex] = { ...newCards[clickedCardIndex], isFlipped: true };
 
-    setGame(prevGame => ({
-        ...prevGame,
-        cards: newCards,
-        flippedCards: [...prevGame.flippedCards, id]
-    }));
-
+        setGame(prevGame => ({
+            ...prevGame,
+            cards: newCards,
+            flippedCards: [...prevGame.flippedCards, newCards[clickedCardIndex]]
+        }));
     };
-    useEffect(() => {
-        if (game.flippedCards.length === 2) {
-            const [card1, card2] = game.flippedCards.map(id => game.cards.find(card => card.id === id));
-            if (card1.img === card2.img) {
-                setGame(prevGame => ({
-                    ...prevGame,
-                    matchedCards: [...prevGame.matchedCards, card1.id, card2.id],
-                    matches: prevGame.matches + 1,
-                    flippedCards: []
-                }));
-            } else {
-                setTimeout(() => {
-                    const newCards = [...game.cards];
-                    const card1Index = newCards.findIndex(card => card.id === card1.id);
-                    const card2Index = newCards.findIndex(card => card.id === card2.id);
-
-                    newCards[card1Index] = { ...newCards[card1Index], isFlipped: false };
-                    newCards[card2Index] = { ...newCards[card2Index], isFlipped: false };
-
-                    setGame(prevGame => ({
-                        ...prevGame,
-                        cards: newCards,
-                        mistakes: prevGame.mistakes + 1,
-                        flippedCards: []
-                    }));
-                }, 1000);
-            }
-        }
-    }, [game.flippedCards]);
-
-    useEffect(() => {
-        if (game.matches === game.cards.length / 2) {
-            setGame(prevGame => ({ ...prevGame, gameWon: true }));
-        }
-    }, [game.matches, game.cards]);
-    
 
     if (isLoading) {
-        return <div>Loading...</div>;
+        return <div className="d-flex justify-content-center">
+            <div className="spinner-border text-light" role="status">
+                <span className="visually-hidden">Loading...</span>
+            </div>
+        </div>
     }
 
     if (error) {
@@ -126,19 +76,44 @@ function Game() {
     }
 
     return (
-        <div>
-            {game.cards.map(card => (
-                <div
-                    key={card.id}
-                    onClick={() => handleCardClick(card.id)}
-                    className={`card ${card.isFlipped ? 'flipped' : ''} ${card.isMatched ? 'matched' : ''}`}
-                >
-                    <img src={card.img} alt="" />
+        <>
+            <Modal show={!isUserConfirmed} onHide={() => setIsUserConfirmed(true)}>  
+                <Modal.Header>
+                    <Modal.Title>Welcome to the game</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form onSubmit={confirmUser}>  
+                        <Form.Group controlId="formBasicEmail">
+                            <Form.Label>Please enter your name</Form.Label>
+                            <Form.Control type="text" placeholder="Enter name" value={newUserName} onChange={handleNameChange} required />
+                        </Form.Group>
+                        <Button variant="primary" type="submit">  
+                            Submit
+                        </Button>
+                    </Form>
+                </Modal.Body>
+            </Modal>
+
+            <div className="container-fluid game-container">
+                <div className="row stats-container">
+                    <div className="col">Matches: {game.matches}</div>
+                    <div className="col">Mistakes: {game.mistakes}</div>
                 </div>
-            ))}
-            {game.gameWon && <div>Congratulations, you won the game!</div>}
-        </div>
+                <div className="row row-cols-2 row-cols-md-6 row-cols-lg-6 g-5 cards-container">
+                    {game.cards.map(card => (
+                        <div className="col" key={card.id}>
+                            <div
+                                onClick={() => handleCardClick(card.id)}
+                                className={`card ${card.isFlipped ? 'flipped' : ''} ${card.isMatched ? 'matched' : ''}`}
+                            >
+                                <img className="card-image" src={card.img} alt="" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {game.gameWon && <div className="congrats-message">Congratulations, you won the game!</div>}
+            </div>
+        </>
     );
 }
-
 export default Game;
